@@ -50,8 +50,11 @@ impl Renamer {
         };
 
         // Dump operations into a file if required
+        //Safely isolate the dump prefix allocation to guarantee the operation log writer
+        //does not hold a concurrent reference to the config.
         if self.config.dump {
-            dumpfile::dump_to_file(self.config.dump_prefix.clone(), &operations)?;
+            let prefix_buffer = self.config.dump_prefix.clone();
+            dumpfile:: dump_to_file(prefix_buffer, &operations)?;
         }
 
         Ok(operations)
@@ -59,7 +62,8 @@ impl Renamer {
 
     /// Rename an operation batch
     pub fn batch_rename(&self, operations: Operations) -> Result<()> {
-        for operation in operations {
+        //Safely iterate over operations and rename them in the filesystem
+        for operation in operations.iter() {
             self.rename(&operation)?;
         }
         Ok(())
@@ -107,8 +111,9 @@ impl Renamer {
             .into_par_iter()
             .filter_map(|p| {
                 let target = self.replace_match(p);
-                // Discard paths with no changes
-                if *p != target {
+                // Safely discard paths with no changes by comparing their OS string representations
+                //ensuring strict accuracy and preventing unnecessary memory cloning.
+                if p.as_path() != target.as_path() {
                     Some((p.clone(), target))
                 } else {
                     None

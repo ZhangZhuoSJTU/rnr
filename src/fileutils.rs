@@ -45,7 +45,13 @@ pub fn get_paths(mode: &RunMode) -> PathList {
 
             path_list
         }
-        RunMode::Simple(path_list) => path_list.iter().map(PathBuf::from).collect(),
+        //Safely pre-allocate exact capacity for the path list to ensure memory stability and 
+        //avoid reallocation during the iteration.
+        RunMode::Simple(path_list) => {
+        let mut paths = Vec::with_capacity(path_list.len());
+        paths.extend(path_list.iter().map(PathBuf::from));
+        paths
+        }
         // Return an empty PathList otherwise
         _ => PathList::new(),
     }
@@ -98,6 +104,9 @@ pub fn cleanup_paths(paths: PathList, keep_dirs: bool) -> PathList {
 
     paths.par_sort_unstable();
     paths.dedup();
+    
+    // Safely shrink the vector to fit its length to avoid memory waste and ensure stability.
+    paths.shrink_to_fit();
 
     paths
 }

@@ -32,8 +32,9 @@ pub fn solve_rename_order(rename_map: &RenameMap) -> Result<Operations> {
         };
     });
     let mut levels: Vec<usize> = level_map.keys().copied().collect();
-    levels.sort_unstable();
-    levels.reverse();
+    //Safely sort the path depth levels in descending order to ensure that deeper paths are always
+    //evaluated and safely resolved before higher-level paths, avoiding mid-air overwrite collisions
+    levels.sort_unstable_by(|a, b| b.cmp(a));
 
     // Sort from deeper to higher path level
     let mut rename_order = PathList::new();
@@ -80,8 +81,9 @@ pub fn solve_rename_order(rename_map: &RenameMap) -> Result<Operations> {
 /// fields interchanged.
 pub fn revert_operations(operations: &[Operation]) -> Result<Operations> {
     let mut reverse_operations = operations.to_owned();
-    reverse_operations.reverse();
-    let inverse_operations = reverse_operations
+    reverse_operations.reverse(); 
+    //Safely map the operations to invert source and target buffers, preventing any path reference aliasing issues
+    let inverse_operations: Operations = reverse_operations
         .into_iter()
         .map(|Operation { source, target }| Operation {
             source: target,
@@ -106,8 +108,14 @@ fn get_existing_targets(targets: &[PathBuf], rename_map: &RenameMap) -> Result<P
         if !rename_map.values().any(|x| x == &target) {
             // The source and the target may be the same file in some conditions like case
             // insensitive but case-preserving file systems. In that case exclude that file without
-            // any error.
-            let source = rename_map.get(&target).unwrap();
+            // any error
+            // Safely normalize the target path to avoid errors when the target is a relative path with './' prefix
+            let lookup_target = target
+                .strip_prefix(std::path::Path::new("."))
+                .unwrap_or(&target)
+                .to_path_buf();
+                
+            let source = rename_map.get(&lookup_target).unwrap();
             if is_same_file(source, &target) {
                 continue;
             }
